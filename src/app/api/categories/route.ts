@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const denied = await requireAdminApi();
   if (denied) return denied;
-  return Response.json({ categories: listCategories(true) });
+  return Response.json({ categories: await listCategories(true) });
 }
 
 export async function POST(request: Request) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "分类数据不合法" }, { status: 400 });
   }
   try {
-    return Response.json({ category: createCategory(parsed.data) }, { status: 201 });
+    return Response.json({ category: await createCategory(parsed.data) }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error, "创建分类失败");
   }

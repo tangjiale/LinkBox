@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const denied = await requireAdminApi();
   if (denied) return denied;
-  return Response.json({ tags: listTags() });
+  return Response.json({ tags: await listTags() });
 }
 
 export async function POST(request: Request) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "标签数据不合法" }, { status: 400 });
   }
   try {
-    return Response.json({ tag: createTag(parsed.data) }, { status: 201 });
+    return Response.json({ tag: await createTag(parsed.data) }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error, "创建标签失败");
   }

@@ -3,7 +3,6 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  serverExternalPackages: ["better-sqlite3"],
   turbopack: {
     root: path.resolve(__dirname),
   },

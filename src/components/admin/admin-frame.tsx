@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { BarChart3, Database, FolderTree, Link2, Tags } from "lucide-react";
 import { SiteMark } from "@/components/public/site-mark";
 import { LogoutButton } from "./logout-button";
@@ -12,6 +15,8 @@ const navItems = [
 ];
 
 export function AdminFrame({ children, username }: { children: React.ReactNode; username: string }) {
+  const pathname = usePathname();
+
   return (
     <div className="min-h-screen bg-slate-100">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-line bg-white px-4 py-5 lg:block">
@@ -21,7 +26,7 @@ export function AdminFrame({ children, username }: { children: React.ReactNode; 
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-blue-50 hover:text-primary"
+              className={navClass(pathname, item.href)}
             >
               <item.icon className="size-4" />
               {item.label}
@@ -49,7 +54,7 @@ export function AdminFrame({ children, username }: { children: React.ReactNode; 
               <Link
                 key={item.href}
                 href={item.href}
-                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-sm text-slate-600"
+                className={navClass(pathname, item.href, true)}
               >
                 <item.icon className="size-4" />
                 {item.label}
@@ -61,4 +66,16 @@ export function AdminFrame({ children, username }: { children: React.ReactNode; 
       </div>
     </div>
   );
+}
+
+function navClass(pathname: string, href: string, compact = false) {
+  const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
+  const base = compact
+    ? "inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm transition"
+    : "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition";
+
+  if (active) {
+    return `${base} border-blue-100 bg-blue-50 text-primary`;
+  }
+  return `${base} border-line bg-white text-slate-600 hover:bg-blue-50 hover:text-primary`;
 }

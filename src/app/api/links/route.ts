@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const denied = await requireAdminApi();
   if (denied) return denied;
-  return Response.json({ links: listLinks(true) });
+  return Response.json({ links: await listLinks(true) });
 }
 
 export async function POST(request: Request) {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "链接数据不合法" }, { status: 400 });
   }
   try {
-    createLink(parsed.data);
+    await createLink(parsed.data);
     return Response.json({ ok: true }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error, "创建链接失败");

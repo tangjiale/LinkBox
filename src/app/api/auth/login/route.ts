@@ -1,10 +1,13 @@
 import { loginSchema } from "@/lib/validators/linkbox";
+import { readJson } from "@/lib/api/request";
 import { createSessionToken, sessionCookieName, sessionCookieOptions, validateCredentials } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const payload = loginSchema.safeParse(await request.json());
+  const body = await readJson(request);
+  if (body.error) return body.error;
+  const payload = loginSchema.safeParse(body.data);
   if (!payload.success) {
     return Response.json({ error: payload.error.issues[0]?.message ?? "登录信息不完整" }, { status: 400 });
   }

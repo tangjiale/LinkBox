@@ -3,6 +3,6 @@ import { getPublicData } from "@/lib/db/queries";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
-  return <PublicHome data={getPublicData()} />;
+export default async function Home() {
+  return <PublicHome data={await getPublicData()} />;
 }

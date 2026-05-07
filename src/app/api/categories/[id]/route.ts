@@ -17,7 +17,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return Response.json({ error: parsed.error.issues[0]?.message ?? "分类数据不合法" }, { status: 400 });
   }
   try {
-    updateCategory(id, parsed.data);
+    await updateCategory(id, parsed.data);
     return Response.json({ ok: true });
   } catch (error) {
     return toErrorResponse(error, "更新分类失败");
@@ -29,7 +29,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   if (denied) return denied;
   const { id } = await context.params;
   try {
-    deleteCategory(id);
+    await deleteCategory(id);
     return Response.json({ ok: true });
   } catch (error) {
     return toErrorResponse(error, "删除分类失败");

@@ -3,8 +3,8 @@ import { StatCard } from "@/components/admin/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { getAdminSummary } from "@/lib/db/queries";
 
-export default function AdminHomePage() {
-  const summary = getAdminSummary();
+export default async function AdminHomePage() {
+  const summary = await getAdminSummary();
   return (
     <div className="space-y-6">
       <div>

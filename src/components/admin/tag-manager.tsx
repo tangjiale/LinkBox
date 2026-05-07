@@ -5,6 +5,7 @@ import type { Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { getFetchErrorMessage, parseApiResponse } from "@/lib/api/client";
 
 const emptyForm = {
   name: "",
@@ -15,6 +16,7 @@ export function TagManager({ tags }: { tags: Tag[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function edit(tag: Tag) {
     setEditingId(tag.id);
@@ -29,28 +31,46 @@ export function TagManager({ tags }: { tags: Tag[] }) {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await fetch(editingId ? `/api/tags/${editingId}` : "/api/tags", {
-      method: editingId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      setMessage(data.error ?? "保存失败");
-      return;
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(editingId ? `/api/tags/${editingId}` : "/api/tags", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "保存失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-    window.location.reload();
   }
 
   async function remove(tag: Tag) {
     if (!window.confirm(`确认删除标签「${tag.name}」吗？关联链接会自动解除该标签。`)) return;
-    const response = await fetch(`/api/tags/${tag.id}`, { method: "DELETE" });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      setMessage(data.error ?? "删除失败");
-      return;
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/tags/${tag.id}`, { method: "DELETE" });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "删除失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-    window.location.reload();
   }
 
   return (
@@ -69,9 +89,9 @@ export function TagManager({ tags }: { tags: Tag[] }) {
           </div>
           {message ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{message}</p> : null}
           <div className="flex gap-2">
-            <Button>{editingId ? "保存标签" : "新增标签"}</Button>
+            <Button disabled={submitting}>{submitting ? "处理中..." : editingId ? "保存标签" : "新增标签"}</Button>
             {editingId ? (
-              <Button type="button" variant="secondary" onClick={reset}>
+              <Button type="button" variant="secondary" disabled={submitting} onClick={reset}>
                 取消
               </Button>
             ) : null}
@@ -90,10 +110,10 @@ export function TagManager({ tags }: { tags: Tag[] }) {
                 <span className="text-xs text-slate-400">{tag.slug}</span>
               </div>
               <div className="mt-4 flex gap-2">
-                <Button size="sm" variant="secondary" onClick={() => edit(tag)}>
+                <Button size="sm" variant="secondary" disabled={submitting} onClick={() => edit(tag)}>
                   编辑
                 </Button>
-                <Button size="sm" variant="danger" onClick={() => remove(tag)}>
+                <Button size="sm" variant="danger" disabled={submitting} onClick={() => remove(tag)}>
                   删除
                 </Button>
               </div>

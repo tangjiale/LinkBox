@@ -27,7 +27,7 @@ function safeEqual(a: string, b: string) {
 }
 
 export async function validateCredentials(username: string, password: string) {
-  const admin = getAdminByUsername(username);
+  const admin = await getAdminByUsername(username);
   if (!admin) return false;
   return compare(password, admin.passwordHash);
 }
@@ -59,7 +59,7 @@ export async function getCurrentAdmin() {
   const cookieStore = await cookies();
   const session = readSessionToken(cookieStore.get(sessionCookieName)?.value);
   if (!session) return null;
-  const admin = getAdminByUsername(session.username);
+  const admin = await getAdminByUsername(session.username);
   if (!admin) return null;
   return { id: admin.id, username: admin.username };
 }

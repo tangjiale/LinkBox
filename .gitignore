@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.playwright-mcp/
 
 # local sqlite data
 /data/*.sqlite

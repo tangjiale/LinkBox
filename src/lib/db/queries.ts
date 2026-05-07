@@ -1,5 +1,5 @@
-import { asc, desc, eq } from "drizzle-orm";
-import { db, ensureDatabase, getSqlite } from "./connection";
+import { asc, desc, eq, inArray } from "drizzle-orm";
+import { db, ensureDatabase } from "./connection";
 import { adminUsers, categories, linkTags, links, tags } from "./schema";
 import type { Category, LinkItem, PublicData, Tag } from "@/lib/types";
 import type { CategoryInput, LinkInput, TagInput } from "@/lib/validators/linkbox";
@@ -14,33 +14,49 @@ function id() {
   return crypto.randomUUID();
 }
 
-function ensureUniqueSlug(base: string, table: "categories" | "tags", currentId?: string) {
-  const sqlite = getSqlite();
+async function ensureUniqueSlug(base: string, table: "categories" | "tags", currentId?: string) {
+  await ensureDatabase();
   const slug = createSlug(base);
-  const existing = sqlite.prepare(`select id from ${table} where slug = ?`).get(slug) as { id: string } | undefined;
-  if (!existing || existing.id === currentId) return slug;
-  return `${slug}-${id().slice(0, 6)}`;
+  const existing =
+    table === "categories"
+      ? await db().select({ id: categories.id }).from(categories).where(eq(categories.slug, slug)).limit(1)
+      : await db().select({ id: tags.id }).from(tags).where(eq(tags.slug, slug)).limit(1);
+  if (existing.length === 0 || existing[0].id === currentId) return slug;
+
+  for (let index = 0; index < 8; index += 1) {
+    const candidate = `${slug}-${id().slice(0, 8)}`;
+    const duplicate =
+      table === "categories"
+        ? await db().select({ id: categories.id }).from(categories).where(eq(categories.slug, candidate)).limit(1)
+        : await db().select({ id: tags.id }).from(tags).where(eq(tags.slug, candidate)).limit(1);
+    if (duplicate.length === 0) return candidate;
+  }
+  throw new LinkBoxError(409, "无法生成唯一标识，请稍后重试。");
 }
 
-function assertExists(table: "categories" | "links" | "tags", itemId: string, label: string) {
-  const sqlite = getSqlite();
-  const row = sqlite.prepare(`select id from ${table} where id = ?`).get(itemId);
-  if (!row) throw new LinkBoxError(404, `${label}不存在或已被删除。`);
+async function assertExists(table: "categories" | "links" | "tags", itemId: string, label: string) {
+  await ensureDatabase();
+  const row =
+    table === "categories"
+      ? await db().select({ id: categories.id }).from(categories).where(eq(categories.id, itemId)).limit(1)
+      : table === "links"
+        ? await db().select({ id: links.id }).from(links).where(eq(links.id, itemId)).limit(1)
+        : await db().select({ id: tags.id }).from(tags).where(eq(tags.id, itemId)).limit(1);
+  if (row.length === 0) throw new LinkBoxError(404, `${label}不存在或已被删除。`);
 }
 
-function assertCategoryUsable(categoryId: string) {
-  const sqlite = getSqlite();
-  const row = sqlite.prepare("select id from categories where id = ?").get(categoryId);
-  if (!row) throw new LinkBoxError(400, "所选分类不存在。");
+async function assertCategoryUsable(categoryId: string) {
+  await ensureDatabase();
+  const row = await db().select({ id: categories.id }).from(categories).where(eq(categories.id, categoryId)).limit(1);
+  if (row.length === 0) throw new LinkBoxError(400, "所选分类不存在。");
 }
 
-function normalizeTagIds(tagIds: string[]) {
+async function normalizeTagIds(tagIds: string[]) {
   const uniqueIds = Array.from(new Set(tagIds));
   if (uniqueIds.length === 0) return uniqueIds;
 
-  const sqlite = getSqlite();
-  const placeholders = uniqueIds.map(() => "?").join(", ");
-  const rows = sqlite.prepare(`select id from tags where id in (${placeholders})`).all(...uniqueIds) as Array<{ id: string }>;
+  await ensureDatabase();
+  const rows = await db().select({ id: tags.id }).from(tags).where(inArray(tags.id, uniqueIds));
   if (rows.length !== uniqueIds.length) {
     throw new LinkBoxError(400, "部分标签不存在，请刷新后重试。");
   }
@@ -71,66 +87,68 @@ function normalizeTag(row: typeof tags.$inferSelect): Tag {
   };
 }
 
-export function getAdminByUsername(username: string) {
-  ensureDatabase();
-  return db.select().from(adminUsers).where(eq(adminUsers.username, username)).get();
+export async function getAdminByUsername(username: string) {
+  await ensureDatabase();
+  const rows = await db().select().from(adminUsers).where(eq(adminUsers.username, username)).limit(1);
+  return rows[0];
 }
 
-export function listCategories(includeInactive = false): Category[] {
-  ensureDatabase();
-  const rows = db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name)).all();
+export async function listCategories(includeInactive = false): Promise<Category[]> {
+  await ensureDatabase();
+  const rows = await db().select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name));
   return rows.filter((item) => includeInactive || item.isActive).map(normalizeCategory);
 }
 
-export function listTags(): Tag[] {
-  ensureDatabase();
-  return db.select().from(tags).orderBy(asc(tags.name)).all().map(normalizeTag);
+export async function listTags(): Promise<Tag[]> {
+  await ensureDatabase();
+  return (await db().select().from(tags).orderBy(asc(tags.name))).map(normalizeTag);
 }
 
-export function listLinks(includeInactive = false): LinkItem[] {
-  ensureDatabase();
-  const categoryMap = new Map(listCategories(true).map((category) => [category.id, category]));
-  const tagMap = new Map(listTags().map((tag) => [tag.id, tag]));
-  const linkRows = db
-    .select()
-    .from(links)
-    .orderBy(asc(links.sortOrder), desc(links.createdAt), asc(links.title))
-    .all()
-    .filter((item) => includeInactive || item.isActive);
-  const linkTagRows = db.select().from(linkTags).all();
+export async function listLinks(includeInactive = false): Promise<LinkItem[]> {
+  await ensureDatabase();
+  const [allCategories, allTags, linkRows, linkTagRows] = await Promise.all([
+    listCategories(true),
+    listTags(),
+    db().select().from(links).orderBy(asc(links.sortOrder), desc(links.createdAt), asc(links.title)),
+    db().select().from(linkTags),
+  ]);
+  const categoryMap = new Map(allCategories.map((category) => [category.id, category]));
+  const tagMap = new Map(allTags.map((tag) => [tag.id, tag]));
 
-  return linkRows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    url: row.url,
-    description: row.description,
-    iconUrl: row.iconUrl,
-    categoryId: row.categoryId,
-    category: categoryMap.get(row.categoryId) ?? null,
-    tags: linkTagRows
-      .filter((item) => item.linkId === row.id)
-      .map((item) => tagMap.get(item.tagId))
-      .filter((item): item is Tag => Boolean(item)),
-    isFeatured: row.isFeatured,
-    isActive: row.isActive,
-    sortOrder: row.sortOrder,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }));
+  return linkRows
+    .filter((item) => includeInactive || item.isActive)
+    .map((row) => ({
+      id: row.id,
+      title: row.title,
+      url: row.url,
+      description: row.description,
+      iconUrl: row.iconUrl,
+      categoryId: row.categoryId,
+      category: categoryMap.get(row.categoryId) ?? null,
+      tags: linkTagRows
+        .filter((item) => item.linkId === row.id)
+        .map((item) => tagMap.get(item.tagId))
+        .filter((item): item is Tag => Boolean(item)),
+      isFeatured: row.isFeatured,
+      isActive: row.isActive,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
 }
 
-export function getPublicData(): PublicData {
+export async function getPublicData(): Promise<PublicData> {
+  const [visibleCategories, allTags, activeLinks] = await Promise.all([listCategories(false), listTags(), listLinks(false)]);
+  const visibleCategoryIds = new Set(visibleCategories.map((category) => category.id));
   return {
-    categories: listCategories(false),
-    tags: listTags(),
-    links: listLinks(false),
+    categories: visibleCategories,
+    tags: allTags,
+    links: activeLinks.filter((link) => visibleCategoryIds.has(link.categoryId)),
   };
 }
 
-export function getAdminSummary() {
-  const allLinks = listLinks(true);
-  const allCategories = listCategories(true);
-  const allTags = listTags();
+export async function getAdminSummary() {
+  const [allLinks, allCategories, allTags] = await Promise.all([listLinks(true), listCategories(true), listTags()]);
 
   return {
     linksCount: allLinks.length,
@@ -142,152 +160,137 @@ export function getAdminSummary() {
   };
 }
 
-export function createCategory(input: CategoryInput) {
-  ensureDatabase();
+export async function createCategory(input: CategoryInput) {
+  await ensureDatabase();
   const row = {
     id: id(),
     name: input.name,
-    slug: ensureUniqueSlug(input.name, "categories"),
+    slug: await ensureUniqueSlug(input.name, "categories"),
     description: input.description || null,
     sortOrder: input.sortOrder,
     isActive: input.isActive,
     createdAt: timestamp(),
     updatedAt: timestamp(),
   };
-  db.insert(categories).values(row).run();
+  await db().insert(categories).values(row);
   return normalizeCategory(row);
 }
 
-export function updateCategory(categoryId: string, input: CategoryInput) {
-  ensureDatabase();
-  assertExists("categories", categoryId, "分类");
-  const updatedAt = timestamp();
-  db.update(categories)
+export async function updateCategory(categoryId: string, input: CategoryInput) {
+  await ensureDatabase();
+  await assertExists("categories", categoryId, "分类");
+  await db()
+    .update(categories)
     .set({
       name: input.name,
-      slug: ensureUniqueSlug(input.name, "categories", categoryId),
+      slug: await ensureUniqueSlug(input.name, "categories", categoryId),
       description: input.description || null,
       sortOrder: input.sortOrder,
       isActive: input.isActive,
-      updatedAt,
+      updatedAt: timestamp(),
     })
-    .where(eq(categories.id, categoryId))
-    .run();
+    .where(eq(categories.id, categoryId));
 }
 
-export function deleteCategory(categoryId: string) {
-  ensureDatabase();
-  assertExists("categories", categoryId, "分类");
-  const related = db.select().from(links).where(eq(links.categoryId, categoryId)).all();
+export async function deleteCategory(categoryId: string) {
+  await ensureDatabase();
+  await assertExists("categories", categoryId, "分类");
+  const related = await db().select({ id: links.id }).from(links).where(eq(links.categoryId, categoryId)).limit(1);
   if (related.length > 0) {
     throw new LinkBoxError(409, "该分类下仍有关联链接，请先调整或删除链接。");
   }
-  db.delete(categories).where(eq(categories.id, categoryId)).run();
+  await db().delete(categories).where(eq(categories.id, categoryId));
 }
 
-export function createTag(input: TagInput) {
-  ensureDatabase();
+export async function createTag(input: TagInput) {
+  await ensureDatabase();
   const row = {
     id: id(),
     name: input.name,
-    slug: ensureUniqueSlug(input.name, "tags"),
+    slug: await ensureUniqueSlug(input.name, "tags"),
     color: input.color,
     createdAt: timestamp(),
     updatedAt: timestamp(),
   };
-  db.insert(tags).values(row).run();
+  await db().insert(tags).values(row);
   return normalizeTag(row);
 }
 
-export function updateTag(tagId: string, input: TagInput) {
-  ensureDatabase();
-  assertExists("tags", tagId, "标签");
-  db.update(tags)
+export async function updateTag(tagId: string, input: TagInput) {
+  await ensureDatabase();
+  await assertExists("tags", tagId, "标签");
+  await db()
+    .update(tags)
     .set({
       name: input.name,
-      slug: ensureUniqueSlug(input.name, "tags", tagId),
+      slug: await ensureUniqueSlug(input.name, "tags", tagId),
       color: input.color,
       updatedAt: timestamp(),
     })
-    .where(eq(tags.id, tagId))
-    .run();
+    .where(eq(tags.id, tagId));
 }
 
-export function deleteTag(tagId: string) {
-  ensureDatabase();
-  assertExists("tags", tagId, "标签");
-  db.delete(linkTags).where(eq(linkTags.tagId, tagId)).run();
-  db.delete(tags).where(eq(tags.id, tagId)).run();
+export async function deleteTag(tagId: string) {
+  await ensureDatabase();
+  await assertExists("tags", tagId, "标签");
+  await db().delete(linkTags).where(eq(linkTags.tagId, tagId));
+  await db().delete(tags).where(eq(tags.id, tagId));
 }
 
-export function createLink(input: LinkInput) {
-  ensureDatabase();
-  assertCategoryUsable(input.categoryId);
-  const validTagIds = normalizeTagIds(input.tagIds);
+export async function createLink(input: LinkInput) {
+  await ensureDatabase();
+  await assertCategoryUsable(input.categoryId);
+  const validTagIds = await normalizeTagIds(input.tagIds);
   const linkId = id();
   const now = timestamp();
-  const sqlite = getSqlite();
-  const createTx = sqlite.transaction(() => {
-    sqlite
-      .prepare(
-        "insert into links (id, title, url, description, icon_url, category_id, is_featured, is_active, sort_order, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(
-        linkId,
-        input.title,
-        input.url,
-        input.description || null,
-        input.iconUrl || null,
-        input.categoryId,
-        input.isFeatured ? 1 : 0,
-        input.isActive ? 1 : 0,
-        input.sortOrder,
-        now,
-        now,
-      );
-    replaceLinkTags(linkId, validTagIds);
+  await db().insert(links).values({
+    id: linkId,
+    title: input.title,
+    url: input.url,
+    description: input.description || null,
+    iconUrl: input.iconUrl || null,
+    categoryId: input.categoryId,
+    isFeatured: input.isFeatured,
+    isActive: input.isActive,
+    sortOrder: input.sortOrder,
+    createdAt: now,
+    updatedAt: now,
   });
-  createTx();
+  await replaceLinkTags(linkId, validTagIds);
 }
 
-export function updateLink(linkId: string, input: LinkInput) {
-  ensureDatabase();
-  assertExists("links", linkId, "链接");
-  assertCategoryUsable(input.categoryId);
-  const validTagIds = normalizeTagIds(input.tagIds);
-  const sqlite = getSqlite();
-  const updateTx = sqlite.transaction(() => {
-    sqlite
-      .prepare(
-        "update links set title = ?, url = ?, description = ?, icon_url = ?, category_id = ?, is_featured = ?, is_active = ?, sort_order = ?, updated_at = ? where id = ?",
-      )
-      .run(
-        input.title,
-        input.url,
-        input.description || null,
-        input.iconUrl || null,
-        input.categoryId,
-        input.isFeatured ? 1 : 0,
-        input.isActive ? 1 : 0,
-        input.sortOrder,
-        timestamp(),
-        linkId,
-      );
-    replaceLinkTags(linkId, validTagIds);
-  });
-  updateTx();
+export async function updateLink(linkId: string, input: LinkInput) {
+  await ensureDatabase();
+  await assertExists("links", linkId, "链接");
+  await assertCategoryUsable(input.categoryId);
+  const validTagIds = await normalizeTagIds(input.tagIds);
+  await db()
+    .update(links)
+    .set({
+      title: input.title,
+      url: input.url,
+      description: input.description || null,
+      iconUrl: input.iconUrl || null,
+      categoryId: input.categoryId,
+      isFeatured: input.isFeatured,
+      isActive: input.isActive,
+      sortOrder: input.sortOrder,
+      updatedAt: timestamp(),
+    })
+    .where(eq(links.id, linkId));
+  await replaceLinkTags(linkId, validTagIds);
 }
 
-export function deleteLink(linkId: string) {
-  ensureDatabase();
-  assertExists("links", linkId, "链接");
-  db.delete(linkTags).where(eq(linkTags.linkId, linkId)).run();
-  db.delete(links).where(eq(links.id, linkId)).run();
+export async function deleteLink(linkId: string) {
+  await ensureDatabase();
+  await assertExists("links", linkId, "链接");
+  await db().delete(linkTags).where(eq(linkTags.linkId, linkId));
+  await db().delete(links).where(eq(links.id, linkId));
 }
 
-function replaceLinkTags(linkId: string, tagIds: string[]) {
-  db.delete(linkTags).where(eq(linkTags.linkId, linkId)).run();
-  tagIds.forEach((tagId) => {
-    db.insert(linkTags).values({ linkId, tagId }).run();
-  });
+async function replaceLinkTags(linkId: string, tagIds: string[]) {
+  await db().delete(linkTags).where(eq(linkTags.linkId, linkId));
+  if (tagIds.length > 0) {
+    await db().insert(linkTags).values(tagIds.map((tagId) => ({ linkId, tagId })));
+  }
 }

@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { FolderTree, Search, Sparkles, Star, Tags } from "lucide-react";
 import type { Category, LinkItem, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea } from "@/components/ui/input";
 import { LinkIcon } from "@/components/public/link-icon";
+import { getFetchErrorMessage, parseApiResponse } from "@/lib/api/client";
+import { StatCard } from "./stat-card";
 
 type LinkForm = {
   title: string;
@@ -40,6 +42,8 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState<LinkForm>(() => createEmptyForm(categories));
+  const [submitting, setSubmitting] = useState(false);
+  const [resolvingIcon, setResolvingIcon] = useState(false);
 
   const filteredLinks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -78,6 +82,31 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
     setMessage("");
   }
 
+  async function resolveIcon() {
+    if (resolvingIcon) return;
+    const url = form.url.trim();
+    if (!url || url === "https://") {
+      setMessage("请先填写网站 URL");
+      return;
+    }
+
+    setResolvingIcon(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/favicon?url=${encodeURIComponent(url)}`);
+      const data = (await parseApiResponse(response)) as { error?: string; iconUrl?: string };
+      if (!response.ok || !data.iconUrl) {
+        setMessage(data.error || "没有读取到可用的网站图标");
+        return;
+      }
+      setForm((current) => ({ ...current, iconUrl: data.iconUrl ?? "" }));
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setResolvingIcon(false);
+    }
+  }
+
   function toggleTag(tagId: string, checked: boolean) {
     setForm((current) => ({
       ...current,
@@ -87,28 +116,46 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const response = await fetch(editingId ? `/api/links/${editingId}` : "/api/links", {
-      method: editingId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      setMessage(data.error ?? "保存失败");
-      return;
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(editingId ? `/api/links/${editingId}` : "/api/links", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "保存失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-    window.location.reload();
   }
 
   async function remove(link: LinkItem) {
     if (!window.confirm(`确认删除链接「${link.title}」吗？`)) return;
-    const response = await fetch(`/api/links/${link.id}`, { method: "DELETE" });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      setMessage(data.error ?? "删除失败");
-      return;
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/links/${link.id}`, { method: "DELETE" });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "删除失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
-    window.location.reload();
   }
 
   return (
@@ -117,6 +164,13 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
         <h1 className="text-2xl font-semibold tracking-tight text-slate-950">链接管理</h1>
         <p className="mt-1 text-sm text-slate-500">维护公开页展示的网站链接、分类、标签、热门和启停状态。</p>
       </div>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard title="链接总数" value={links.length} icon={Search} hint={`${links.filter((item) => item.isActive).length} 个正在展示`} />
+        <StatCard title="分类总数" value={categories.length} icon={FolderTree} hint="用于公开页主导航筛选" />
+        <StatCard title="标签总数" value={tags.length} icon={Tags} hint="支持一个链接关联多个标签" />
+        <StatCard title="热门推荐" value={links.filter((item) => item.isFeatured).length} icon={Star} hint="进入公开页热门区域" />
+      </section>
 
       <form className="grid gap-5 rounded-xl border border-line bg-white p-5 shadow-sm xl:grid-cols-2" onSubmit={submit}>
         <div className="space-y-4">
@@ -138,7 +192,17 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
             <Input value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} />
           </Field>
           <Field label="图标 URL（可选）">
-            <Input value={form.iconUrl} onChange={(event) => setForm({ ...form, iconUrl: event.target.value })} placeholder="留空时自动生成首字母图标" />
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <Input value={form.iconUrl} onChange={(event) => setForm({ ...form, iconUrl: event.target.value })} placeholder="可自动读取，也可以手动填写图标地址" />
+              <Button type="button" variant="secondary" disabled={submitting || resolvingIcon} onClick={resolveIcon}>
+                <Sparkles className="size-4" />
+                {resolvingIcon ? "读取中..." : "自动读取"}
+              </Button>
+            </div>
+            <div className="mt-3 flex items-center gap-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2">
+              <LinkIcon title={form.title || form.url || "网站"} iconUrl={form.iconUrl || null} className="size-9 rounded-lg" />
+              <span className="text-xs text-slate-500">{form.iconUrl ? "当前图标预览" : "未设置图标时会显示首字母图标"}</span>
+            </div>
           </Field>
           <Field label="描述">
             <Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
@@ -171,9 +235,9 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
           </div>
           {message ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{message}</p> : null}
           <div className="flex gap-2">
-            <Button>{editingId ? "保存链接" : "新增链接"}</Button>
+            <Button disabled={submitting}>{submitting ? "处理中..." : editingId ? "保存链接" : "新增链接"}</Button>
             {editingId ? (
-              <Button type="button" variant="secondary" onClick={reset}>
+              <Button type="button" variant="secondary" disabled={submitting} onClick={reset}>
                 取消
               </Button>
             ) : null}
@@ -241,10 +305,10 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
                   <td className="px-5 py-4 text-slate-500">{link.sortOrder}</td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => edit(link)}>
+                      <Button size="sm" variant="secondary" disabled={submitting} onClick={() => edit(link)}>
                         编辑
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => remove(link)}>
+                      <Button size="sm" variant="danger" disabled={submitting} onClick={() => remove(link)}>
                         删除
                       </Button>
                     </div>

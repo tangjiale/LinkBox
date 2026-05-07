@@ -1,18 +1,18 @@
 import { relations } from "drizzle-orm";
-import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { boolean, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
-export const categories = sqliteTable("categories", {
+export const categories = pgTable("categories", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   description: text("description"),
   sortOrder: integer("sort_order").notNull().default(0),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
 
-export const links = sqliteTable("links", {
+export const links = pgTable("links", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
   url: text("url").notNull(),
@@ -21,14 +21,14 @@ export const links = sqliteTable("links", {
   categoryId: text("category_id")
     .notNull()
     .references(() => categories.id),
-  isFeatured: integer("is_featured", { mode: "boolean" }).notNull().default(false),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  isFeatured: boolean("is_featured").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
 
-export const tags = sqliteTable("tags", {
+export const tags = pgTable("tags", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
@@ -37,7 +37,7 @@ export const tags = sqliteTable("tags", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const linkTags = sqliteTable(
+export const linkTags = pgTable(
   "link_tags",
   {
     linkId: text("link_id")
@@ -47,12 +47,10 @@ export const linkTags = sqliteTable(
       .notNull()
       .references(() => tags.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.linkId, table.tagId] }),
-  }),
+  (table) => [primaryKey({ columns: [table.linkId, table.tagId] })],
 );
 
-export const adminUsers = sqliteTable("admin_users", {
+export const adminUsers = pgTable("admin_users", {
   id: text("id").primaryKey(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),

@@ -13,10 +13,10 @@ export default function SettingsPage() {
             <Database className="size-5" />
           </div>
           <div>
-            <h2 className="font-semibold text-slate-950">SQLite 本地存储</h2>
+            <h2 className="font-semibold text-slate-950">Postgres 云数据库</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              当前数据默认存储在项目内 <code className="rounded bg-slate-100 px-1.5 py-0.5">data/linkbox.sqlite</code>。
-              可以通过环境变量 <code className="rounded bg-slate-100 px-1.5 py-0.5">LINKBOX_DB_PATH</code> 指定数据库路径。
+              当前版本使用 Postgres 持久化数据，部署到 Vercel 时推荐通过 Vercel Marketplace 连接 Neon。
+              运行环境需要配置 <code className="rounded bg-slate-100 px-1.5 py-0.5">DATABASE_URL</code>。
             </p>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               默认管理员账号为 <code className="rounded bg-slate-100 px-1.5 py-0.5">admin</code>，初始密码为{" "}

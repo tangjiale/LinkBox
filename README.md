@@ -2,7 +2,7 @@
 
 链接盒子是一个现代化的链接管理与 Web 导航网站。它提供一个公开展示页，用来快速搜索、筛选和访问常用网站；同时提供一个登录保护的管理后台，用来维护分类、链接和标签。
 
-项目当前基于 **Next.js + React + TypeScript + Tailwind CSS + SQLite** 实现，适合作为个人导航、团队内部资源入口、工具集合页或轻量知识库入口。
+项目当前基于 **Next.js + React + TypeScript + Tailwind CSS + Postgres** 实现，适合作为个人导航、团队内部资源入口、工具集合页或轻量知识库入口。
 
 
 ## 功能概览
@@ -22,14 +22,14 @@
   - 分类管理：新增、编辑、删除、排序、启停
   - 链接管理：新增、编辑、删除、分类关联、多标签关联、热门推荐、启停
   - 标签管理：新增、编辑、删除、颜色配置
-  - 数据设置：展示 SQLite 存储说明和生产环境提醒
+  - 数据设置：展示 Postgres 连接说明和生产环境提醒
 
 - **数据与安全**
-  - 本地 SQLite 持久化
+  - Postgres 云数据库持久化，适合部署到 Vercel
   - 后台 API 登录保护
   - 生产环境强制配置 `LINKBOX_SESSION_SECRET`
   - 生产环境初始化管理员时强制配置 `LINKBOX_ADMIN_PASSWORD`
-  - 链接写入使用事务，避免标签关联半写入
+  - 链接支持多标签关联
   - API 对非法 JSON、不存在资源、无效标签等返回稳定错误
 
 
@@ -39,7 +39,7 @@
 - **前端**：React 19、TypeScript
 - **样式**：Tailwind CSS 4
 - **图标**：lucide-react
-- **数据库**：SQLite，本地使用 `better-sqlite3`
+- **数据库**：Postgres，推荐 Vercel Marketplace Neon
 - **ORM / Schema**：Drizzle ORM
 - **校验**：zod
 - **认证**：自定义 Cookie Session + bcryptjs
@@ -55,23 +55,25 @@
 npm install
 ```
 
-### 2. 初始化数据库
+### 2. 配置数据库
+
+项目需要配置 Postgres 连接字符串：
+
+```bash
+DATABASE_URL=postgres://USER:PASSWORD@HOST/DB?sslmode=require
+```
+
+如果使用 Vercel Marketplace 的 Neon 集成，Vercel 会自动注入 `DATABASE_URL`。本地开发可以从 Vercel 拉取环境变量，或手动写入 `.env.local`。
+
+### 3. 初始化数据库
 
 ```bash
 npm run db:seed
 ```
 
-这个命令会创建本地 SQLite 数据库，并写入默认分类、标签、示例链接和本地开发管理员账号。
+这个命令会在 Postgres 中创建表，并写入默认分类、标签、示例链接和本地开发管理员账号。
 
-默认数据库位置：
-
-```text
-data/linkbox.sqlite
-```
-
-数据库文件已在 `.gitignore` 中忽略，不会被提交到 Git。
-
-### 3. 启动开发服务
+### 4. 启动开发服务
 
 ```bash
 npm run dev
@@ -94,6 +96,20 @@ http://localhost:3000/admin
 ```text
 账号：admin
 密码：admin123456
+```
+
+正式环境请务必通过环境变量配置自己的管理员账号和密码。
+
+### 5. Vercel + Neon 快速配置
+
+1. 在 Vercel 项目的 Marketplace 中添加 Neon。
+2. 创建或关联 Neon Postgres 数据库。
+3. 确认 Vercel 项目环境变量中存在 `DATABASE_URL`。
+4. 额外配置 `LINKBOX_SESSION_SECRET`、`LINKBOX_ADMIN_USER`、`LINKBOX_ADMIN_PASSWORD`。
+5. 部署后执行一次初始化：
+
+```bash
+npm run db:seed
 ```
 
 
@@ -122,20 +138,18 @@ npm run db:seed
 
 ## 环境变量
 
-本地开发可以不配置环境变量，项目会使用开发默认值。
+本地开发和生产环境都必须配置数据库连接：
 
-生产环境必须配置以下变量：
+```bash
+DATABASE_URL=postgres://USER:PASSWORD@HOST/DB?sslmode=require
+```
+
+生产环境还必须配置以下变量：
 
 ```bash
 LINKBOX_SESSION_SECRET=一段足够长的随机字符串
 LINKBOX_ADMIN_USER=你的管理员账号
 LINKBOX_ADMIN_PASSWORD=你的管理员密码
-```
-
-可选变量：
-
-```bash
-LINKBOX_DB_PATH=/absolute/path/to/linkbox.sqlite
 ```
 
 ### 生成 Session Secret
@@ -150,6 +164,7 @@ openssl rand -base64 48
 
 - `NODE_ENV=production` 时，如果没有配置 `LINKBOX_SESSION_SECRET`，Session 签名会直接报错。
 - `NODE_ENV=production` 且数据库为空时，如果没有配置 `LINKBOX_ADMIN_PASSWORD`，管理员初始化会直接报错。
+- 如果没有配置 `DATABASE_URL`，数据库初始化和页面读取会直接报错。
 - 本地默认密码 `admin123456` 只用于开发环境。
 
 
@@ -275,7 +290,7 @@ updatedAt
 │   │   └── ui                  通用 UI 组件
 │   └── lib
 │       ├── auth                登录、Session、权限校验
-│       ├── db                  SQLite 连接、Schema、查询与写入
+│       ├── db                  Postgres 连接、Schema、查询与写入
 │       ├── validators          zod 校验
 │       └── utils               通用工具
 ├── tests
@@ -285,53 +300,17 @@ updatedAt
 ```
 
 
-## 部署到 Vercel 的注意事项
+## 部署到 Vercel
 
-当前版本使用的是本地文件 SQLite：
+当前版本已去掉 SQLite，使用 Postgres 作为唯一持久化数据库。推荐通过 Vercel Marketplace 安装 Neon。
 
-```text
-data/linkbox.sqlite
-```
-
-这种方式适合本机或传统服务器部署，但不适合作为 Vercel 上的生产可写数据库。Vercel 的运行环境不适合把项目目录里的 SQLite 文件当作长期持久化数据库使用。
-
-如果要部署到 Vercel，推荐先做数据库适配：
-
-### 推荐方案：Turso / libSQL
-
-Turso 是 Serverless SQLite，最接近当前 SQLite 方案，适合部署到 Vercel。
-
-需要新增环境变量：
+Vercel 生产环境建议配置：
 
 ```bash
-TURSO_DATABASE_URL=你的 Turso 数据库地址
-TURSO_AUTH_TOKEN=你的 Turso Token
-```
-
-同时需要把当前 `better-sqlite3` 文件数据库访问层改成 Turso/libSQL 驱动。
-
-### 可选方案：Vercel Postgres / Neon
-
-如果希望使用更通用的云数据库，可以改成 Postgres。
-
-这需要调整数据库驱动、Schema 和查询层。
-
-### 不推荐方案：直接在 Vercel 使用本地 SQLite 文件
-
-不推荐直接用 `data/linkbox.sqlite` 部署到 Vercel 生产环境，因为后台新增、编辑、删除的数据无法作为可靠的长期数据保存。
-
-
-## 传统服务器部署
-
-如果部署到自有服务器、VPS、Docker 或 NAS，可以继续使用当前 SQLite 文件方案。
-
-生产环境建议配置：
-
-```bash
+DATABASE_URL=Neon 自动注入或手动配置的 Postgres 连接字符串
 LINKBOX_SESSION_SECRET=一段足够长的随机字符串
 LINKBOX_ADMIN_USER=admin
 LINKBOX_ADMIN_PASSWORD=你的强密码
-LINKBOX_DB_PATH=/data/linkbox.sqlite
 ```
 
 构建并启动：
@@ -342,6 +321,8 @@ npm run db:seed
 npm run build
 npm run start
 ```
+
+如果通过 Vercel Dashboard 部署，通常不需要手动运行 `npm run start`。首次部署后需要确保数据库已经初始化；可以在本地连接同一个 `DATABASE_URL` 执行 `npm run db:seed`，或通过 Vercel 的部署/运维命令执行初始化脚本。
 
 
 ## 验证记录
@@ -366,11 +347,9 @@ npm run build
 
 ## 后续可扩展方向
 
-- 适配 Turso/libSQL，支持 Vercel 生产部署
 - 支持链接访问统计
 - 支持导入/导出 JSON 或 CSV
 - 支持拖拽排序
-- 支持暗色模式
 - 支持 favicon 自动抓取
 - 支持多管理员或角色权限
 - 支持公开投稿和审核流程
