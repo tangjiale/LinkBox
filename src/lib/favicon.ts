@@ -5,6 +5,8 @@ type FetchLike = typeof fetch;
 
 const ICON_REL_TOKENS = new Set(["icon", "apple-touch-icon", "apple-touch-icon-precomposed", "mask-icon"]);
 const MAX_HTML_LENGTH = 512_000;
+const SUPPORTED_ICON_EXTENSIONS = new Set([".svg", ".ico", ".png", ".jpg", ".jpeg", ".jpge"]);
+const SUPPORTED_ICON_CONTENT_TYPES = new Set(["image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/png", "image/jpeg", "image/jpg"]);
 
 function isPrivateIpv4(address: string) {
   const parts = address.split(".").map((part) => Number(part));
@@ -78,15 +80,38 @@ function isIconLink(tag: string) {
 
 function scoreIconCandidate(url: string, rel: string) {
   const lower = url.toLowerCase();
+  const extension = getIconExtension(url);
   const normalizedRel = rel.toLowerCase();
   if (normalizedRel.includes("apple-touch-icon")) return 100;
-  if (lower.endsWith(".svg")) return 95;
+  if (extension === ".svg") return 95;
   if (lower.includes("apple-touch-icon")) return 90;
   if (lower.includes("32x32") || lower.includes("48x48") || lower.includes("64x64")) return 80;
   if (lower.includes("favicon")) return 70;
-  if (lower.endsWith(".png")) return 60;
-  if (lower.endsWith(".ico")) return 50;
+  if (extension === ".png") return 60;
+  if (extension === ".jpg" || extension === ".jpeg" || extension === ".jpge") return 55;
+  if (extension === ".ico") return 50;
   return 10;
+}
+
+function getIconExtension(url: string) {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    const match = pathname.match(/\.[a-z0-9]+$/);
+    return match?.[0] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function isSupportedIconContentType(contentType: string) {
+  if (!contentType) return true;
+  const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return SUPPORTED_ICON_CONTENT_TYPES.has(mime) || mime.startsWith("image/");
+}
+
+function isSupportedIconCandidate(url: string, contentType = "") {
+  const extension = getIconExtension(url);
+  return SUPPORTED_ICON_EXTENSIONS.has(extension) || isSupportedIconContentType(contentType);
 }
 
 export function extractFaviconUrls(html: string, pageUrl: string) {
@@ -142,7 +167,7 @@ async function isReachableIcon(url: string, fetchImpl: FetchLike) {
       redirect: "manual",
       signal: AbortSignal.timeout(4000),
     });
-    if (headResponse.ok) return true;
+    if (headResponse.ok) return isSupportedIconCandidate(url, headResponse.headers.get("content-type") ?? "");
     if (headResponse.status !== 405 && headResponse.status !== 403) return false;
 
     const getResponse = await fetchImpl(url, {
@@ -153,10 +178,14 @@ async function isReachableIcon(url: string, fetchImpl: FetchLike) {
       redirect: "manual",
       signal: AbortSignal.timeout(4000),
     });
-    return getResponse.ok;
+    return getResponse.ok && isSupportedIconCandidate(url, getResponse.headers.get("content-type") ?? "");
   } catch {
     return false;
   }
+}
+
+function fallbackIconUrls(origin: string) {
+  return ["/favicon.ico", "/favicon.svg", "/favicon.png", "/favicon.jpg", "/favicon.jpeg", "/apple-touch-icon.png"].map((path) => new URL(path, origin).toString());
 }
 
 export async function resolveFaviconUrl(rawUrl: string, fetchImpl: FetchLike = fetch) {
@@ -173,8 +202,9 @@ export async function resolveFaviconUrl(rawUrl: string, fetchImpl: FetchLike = f
     if (await isReachableIcon(candidate, fetchImpl)) return candidate;
   }
 
-  const fallback = new URL("/favicon.ico", url.origin).toString();
-  if (await isReachableIcon(fallback, fetchImpl)) return fallback;
+  for (const fallback of fallbackIconUrls(url.origin)) {
+    if (await isReachableIcon(fallback, fetchImpl)) return fallback;
+  }
 
   throw new Error("没有读取到可用的网站图标。");
 }

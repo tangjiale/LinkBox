@@ -3,7 +3,7 @@ import { POST as loginPost } from "@/app/api/auth/login/route";
 import { createSlug } from "@/lib/utils/slug";
 import { categorySchema, linkSchema, tagSchema } from "@/lib/validators/linkbox";
 import { createSessionToken, readSessionToken } from "@/lib/auth/session";
-import { extractFaviconUrls, isBlockedIp } from "@/lib/favicon";
+import { extractFaviconUrls, isBlockedIp, resolveFaviconUrl } from "@/lib/favicon";
 
 describe("slug generation", () => {
   it("maps known Chinese category names to stable slugs", () => {
@@ -79,14 +79,64 @@ describe("favicon resolver", () => {
         <link rel="shortcut icon" href="/favicon.ico">
         <link rel="apple-touch-icon" href="https://cdn.example.com/apple.png">
         <link rel="icon" sizes="32x32" href="./favicon-32x32.png">
+        <link rel="icon" type="image/svg+xml" href="/icon.svg">
+        <link rel="icon" type="image/jpeg" href="/icon.jpeg">
       `,
       "https://example.com/docs/page",
     );
 
     expect(icons).toEqual([
       "https://cdn.example.com/apple.png",
+      "https://example.com/icon.svg",
       "https://example.com/docs/favicon-32x32.png",
       "https://example.com/favicon.ico",
+      "https://example.com/icon.jpeg",
+    ]);
+  });
+
+  it("falls back through common svg ico png jpg and jpeg icon paths", async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = input.toString();
+      const method = init?.method ?? "GET";
+
+      if (url === "https://example.com/" && method === "GET") {
+        return new Response("<html><head></head><body>ok</body></html>", {
+          headers: { "content-type": "text/html" },
+        });
+      }
+
+      if (url === "https://example.com/favicon.svg" && method === "HEAD") {
+        return new Response(null, {
+          headers: { "content-type": "image/svg+xml" },
+        });
+      }
+
+      return new Response(null, { status: 404 });
+    };
+
+    await expect(resolveFaviconUrl("https://example.com", fetchImpl)).resolves.toBe("https://example.com/favicon.svg");
+  });
+
+  it("accepts declared png jpg jpeg ico and svg icon candidates", () => {
+    const icons = extractFaviconUrls(
+      `
+        <link rel="icon" href="/favicon.ico">
+        <link rel="icon" href="/favicon.png">
+        <link rel="icon" href="/favicon.jpg">
+        <link rel="icon" href="/favicon.jpeg">
+        <link rel="icon" href="/favicon.jpge">
+        <link rel="icon" href="/favicon.svg">
+      `,
+      "https://example.com",
+    );
+
+    expect(icons).toEqual([
+      "https://example.com/favicon.svg",
+      "https://example.com/favicon.ico",
+      "https://example.com/favicon.png",
+      "https://example.com/favicon.jpg",
+      "https://example.com/favicon.jpeg",
+      "https://example.com/favicon.jpge",
     ]);
   });
 

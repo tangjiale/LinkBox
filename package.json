@@ -1,6 +1,6 @@
 {
   "name": "linkbox",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "release:deploy": "bash scripts/release.sh"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

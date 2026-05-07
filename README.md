@@ -20,7 +20,7 @@
   - 简单管理员登录
   - 概览统计
   - 分类管理：新增、编辑、删除、排序、启停
-  - 链接管理：新增、编辑、删除、分类关联、多标签关联、热门推荐、启停
+  - 链接管理：新增、编辑、删除、分类关联、多标签关联、热门推荐、启停、网站图标自动读取
   - 标签管理：新增、编辑、删除、颜色配置
 
 - **数据与安全**
@@ -327,15 +327,31 @@ npm run start
 
 系统版本来自 `package.json` 的 `version` 字段，并展示在后台左上角品牌名称旁。
 
-发布流程使用 GitHub Actions：
+发布流程使用本地脚本触发 GitHub Actions：
 
 1. 修改 `package.json` 的 `version`。
-2. 提交并推送代码。
-3. 创建并推送同名 tag，例如当前版本为 `0.1.0` 时：
+2. 提交所有代码改动，确保工作区干净。
+3. 执行发布脚本：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+npm run release:deploy
+```
+
+`scripts/release.sh` 会自动完成：
+
+- 读取 `package.json` 的版本号并生成同名 tag，例如 `0.2.0` 对应 `v0.2.0`
+- 检查当前分支、工作区状态和远端 tag 是否冲突
+- 运行 `npm run lint`
+- 运行 `npm test`
+- 运行 `npm run build`
+- 推送当前分支到 `origin`
+- 创建 annotated tag
+- 推送 tag 到 `origin`，触发 GitHub Actions
+
+如果需要指定远端或分支，可以使用环境变量：
+
+```bash
+RELEASE_REMOTE=origin RELEASE_BRANCH=main npm run release:deploy
 ```
 
 推送 `v*` tag 后，`.github/workflows/release.yml` 会自动执行：
@@ -384,6 +400,6 @@ npm run build
 - 支持链接访问统计
 - 支持导入/导出 JSON 或 CSV
 - 支持拖拽排序
-- 支持 favicon 自动抓取
+- 支持更多图标来源和格式策略
 - 支持多管理员或角色权限
 - 支持公开投稿和审核流程
