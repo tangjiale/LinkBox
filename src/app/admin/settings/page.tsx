@@ -1,12 +1,27 @@
 import { Database } from "lucide-react";
+import { APP_VERSION_LABEL } from "@/lib/version";
 
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-950">数据设置</h1>
-        <p className="mt-1 text-sm text-slate-500">首版保留数据库状态和运行说明，导入导出后续再扩展。</p>
+        <p className="mt-1 text-sm text-slate-500">查看系统版本、数据库状态和运行说明。</p>
       </div>
+      <section className="rounded-xl border border-line bg-white p-6 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="grid size-11 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+            <span className="text-sm font-semibold">V</span>
+          </div>
+          <div>
+            <h2 className="font-semibold text-slate-950">系统版本</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              当前运行版本为 <code className="rounded bg-slate-100 px-1.5 py-0.5">{APP_VERSION_LABEL}</code>。
+              版本号来自 <code className="rounded bg-slate-100 px-1.5 py-0.5">package.json</code>，发布 tag 建议保持一致。
+            </p>
+          </div>
+        </div>
+      </section>
       <section className="rounded-xl border border-line bg-white p-6 shadow-sm">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-lg bg-blue-50 text-primary">

@@ -325,6 +325,42 @@ npm run start
 如果通过 Vercel Dashboard 部署，通常不需要手动运行 `npm run start`。首次部署后需要确保数据库已经初始化；可以在本地连接同一个 `DATABASE_URL` 执行 `npm run db:seed`，或通过 Vercel 的部署/运维命令执行初始化脚本。
 
 
+## 版本与发布
+
+系统版本来自 `package.json` 的 `version` 字段，并展示在后台左上角品牌名称旁和“数据设置”页面。
+
+发布流程使用 GitHub Actions：
+
+1. 修改 `package.json` 的 `version`。
+2. 提交并推送代码。
+3. 创建并推送同名 tag，例如当前版本为 `0.1.0` 时：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+推送 `v*` tag 后，`.github/workflows/release.yml` 会自动执行：
+
+- 校验 tag 与 `package.json` 版本一致
+- 安装依赖
+- 运行 `npm run lint`
+- 运行 `npm test`
+- 运行 `npm run build`
+- 创建 GitHub Release
+- 部署到 Vercel Production
+
+GitHub 仓库需要配置以下 Secrets：
+
+```bash
+VERCEL_TOKEN=Vercel 访问令牌
+VERCEL_ORG_ID=Vercel 团队或账号 ID
+VERCEL_PROJECT_ID=Vercel 项目 ID
+```
+
+`VERCEL_ORG_ID` 和 `VERCEL_PROJECT_ID` 可以在本地执行 `vercel link` 后，从 `.vercel/project.json` 中查看。不要把 `.vercel/project.json` 或 Vercel Token 提交到公开仓库。
+
+
 ## 验证记录
 
 当前版本已通过：
