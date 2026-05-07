@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Database, FolderTree, Link2, Tags } from "lucide-react";
+import { BarChart3, FolderTree, Link2, Tags } from "lucide-react";
 import { SiteMark } from "@/components/public/site-mark";
 import { LogoutButton } from "./logout-button";
 
@@ -11,7 +11,6 @@ const navItems = [
   { href: "/admin/categories", label: "分类管理", icon: FolderTree },
   { href: "/admin/links", label: "链接管理", icon: Link2 },
   { href: "/admin/tags", label: "标签管理", icon: Tags },
-  { href: "/admin/settings", label: "数据设置", icon: Database },
 ];
 
 export function AdminFrame({ children, username }: { children: React.ReactNode; username: string }) {

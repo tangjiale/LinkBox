@@ -1,9 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowUpRight,
   BookOpen,
   Bot,
   Clock3,
@@ -100,9 +98,6 @@ export function PublicHome({ data }: { data: PublicData }) {
             <TopNav active={filter === "recent"} darkMode={darkMode} onClick={() => applyFilter("recent")}>
               最近收录
             </TopNav>
-            <Link className="transition hover:text-primary" href="/admin">
-              管理入口
-            </Link>
           </nav>
           <div className="flex items-center gap-3">
             <button
@@ -116,9 +111,6 @@ export function PublicHome({ data }: { data: PublicData }) {
             >
               {darkMode ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </button>
-            <Button asChild size="sm">
-              <Link href="/login">登录</Link>
-            </Button>
           </div>
         </div>
       </header>
@@ -318,7 +310,16 @@ function sectionTitle(filter: FilterMode) {
 
 function LinkCard({ item, darkMode }: { item: LinkItem; darkMode: boolean }) {
   return (
-    <article className={cn("group rounded-lg border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md hover:shadow-blue-950/5", darkMode && "border-slate-800 bg-slate-950 hover:border-blue-500 hover:shadow-none")}>
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`访问 ${item.title}`}
+      className={cn(
+        "group block rounded-lg border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md hover:shadow-blue-950/5 focus-visible:focus-ring",
+        darkMode && "border-slate-800 bg-slate-950 hover:border-blue-500 hover:shadow-none",
+      )}
+    >
       <div className="flex items-start gap-3">
         <LinkIcon title={item.title} iconUrl={item.iconUrl} className="size-12 rounded-xl" />
         <div className="min-w-0 flex-1">
@@ -336,16 +337,7 @@ function LinkCard({ item, darkMode }: { item: LinkItem; darkMode: boolean }) {
           </Badge>
         ))}
       </div>
-      <a
-        href={item.url}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-flex h-7 items-center gap-1 rounded-md border border-blue-100 px-2.5 text-xs font-medium text-primary transition hover:bg-blue-50"
-      >
-        访问
-        <ArrowUpRight className="size-3.5" />
-      </a>
-    </article>
+    </a>
   );
 }
 

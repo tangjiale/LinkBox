@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ChevronLeft, ChevronRight, FolderTree, Plus, Search, Sparkles, Star, Tags, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, FolderTree, Plus, Search, Sparkles, Star, Tags, Trash2, X } from "lucide-react";
 import type { Category, LinkItem, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,20 @@ type LinkForm = {
   sortOrder: number;
 };
 
+function toLinkForm(link: LinkItem): LinkForm {
+  return {
+    title: link.title,
+    url: link.url,
+    description: link.description ?? "",
+    iconUrl: link.iconUrl ?? "",
+    categoryId: link.categoryId,
+    tagIds: link.tags.map((tag) => tag.id),
+    isFeatured: link.isFeatured,
+    isActive: link.isActive,
+    sortOrder: link.sortOrder,
+  };
+}
+
 function createEmptyForm(categories: Category[]): LinkForm {
   return {
     title: "",
@@ -42,11 +56,16 @@ function createEmptyForm(categories: Category[]): LinkForm {
 export function LinkManager({ links, categories, tags }: { links: LinkItem[]; categories: Category[]; tags: Tag[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [openFilter, setOpenFilter] = useState<"category" | "tag" | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [featuredFilter, setFeaturedFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState<LinkForm>(() => createEmptyForm(categories));
   const [formOpen, setFormOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [resolvingIcon, setResolvingIcon] = useState(false);
 
@@ -60,25 +79,63 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
           .join(" ")
           .toLowerCase()
           .includes(keyword);
-      const matchesCategory = categoryFilter === "all" || item.categoryId === categoryFilter;
-      return matchesKeyword && matchesCategory;
+      const matchesCategory = categoryFilter.length === 0 || categoryFilter.includes(item.categoryId);
+      const matchesTag = tagFilter.length === 0 || item.tags.some((tag) => tagFilter.includes(tag.id));
+      const matchesStatus = statusFilter === "all" || (statusFilter === "active" ? item.isActive : !item.isActive);
+      const matchesFeatured = featuredFilter === "all" || (featuredFilter === "featured" ? item.isFeatured : !item.isFeatured);
+      return matchesKeyword && matchesCategory && matchesTag && matchesStatus && matchesFeatured;
     });
-  }, [categoryFilter, links, query]);
+  }, [categoryFilter, featuredFilter, links, query, statusFilter, tagFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLinks.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedLinks = filteredLinks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pagedIds = pagedLinks.map((link) => link.id);
+  const selectedCount = selectedIds.length;
+  const currentPageSelected = pagedIds.length > 0 && pagedIds.every((id) => selectedIds.includes(id));
+  const currentPagePartiallySelected = pagedIds.some((id) => selectedIds.includes(id)) && !currentPageSelected;
   const pageStart = filteredLinks.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(currentPage * PAGE_SIZE, filteredLinks.length);
 
   function updateQuery(value: string) {
     setQuery(value);
     setPage(1);
+    setSelectedIds([]);
   }
 
-  function updateCategoryFilter(value: string) {
+  function updateCategoryFilter(value: string[]) {
     setCategoryFilter(value);
     setPage(1);
+    setSelectedIds([]);
+  }
+
+  function updateTagFilter(value: string[]) {
+    setTagFilter(value);
+    setPage(1);
+    setSelectedIds([]);
+  }
+
+  function updateStatusFilter(value: string) {
+    setStatusFilter(value);
+    setPage(1);
+    setSelectedIds([]);
+  }
+
+  function updateFeaturedFilter(value: string) {
+    setFeaturedFilter(value);
+    setPage(1);
+    setSelectedIds([]);
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) return Array.from(new Set([...current, ...pagedIds]));
+      return current.filter((id) => !pagedIds.includes(id));
+    });
+  }
+
+  function toggleLink(linkId: string, checked: boolean) {
+    setSelectedIds((current) => (checked ? Array.from(new Set([...current, linkId])) : current.filter((id) => id !== linkId)));
   }
 
   function openCreate() {
@@ -90,17 +147,7 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
 
   function edit(link: LinkItem) {
     setEditingId(link.id);
-    setForm({
-      title: link.title,
-      url: link.url,
-      description: link.description ?? "",
-      iconUrl: link.iconUrl ?? "",
-      categoryId: link.categoryId,
-      tagIds: link.tags.map((tag) => tag.id),
-      isFeatured: link.isFeatured,
-      isActive: link.isActive,
-      sortOrder: link.sortOrder,
-    });
+    setForm(toLinkForm(link));
     setMessage("");
     setFormOpen(true);
   }
@@ -188,6 +235,51 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
     }
   }
 
+  async function removeSelected() {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`确认删除选中的 ${selectedIds.length} 个链接吗？`)) return;
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const responses = await Promise.all(selectedIds.map((id) => fetch(`/api/links/${id}`, { method: "DELETE" })));
+      const failed = responses.find((response) => !response.ok);
+      if (failed) {
+        const data = await parseApiResponse(failed);
+        setMessage(data.error || "批量删除失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function toggleLinkStatus(link: LinkItem) {
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...toLinkForm(link), isActive: !link.isActive }),
+      });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "状态更新失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -203,29 +295,66 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
       </section>
 
       <section className="rounded-xl border border-line bg-white shadow-sm">
-        <div className="grid gap-3 border-b border-line px-5 py-4 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
+        <div className="grid gap-3 border-b border-line px-5 py-4 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_170px_170px_130px_150px] 2xl:grid-cols-[minmax(240px,1fr)_180px_180px_140px_160px_auto_auto]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input className="pl-9" placeholder="搜索链接、URL、标签..." value={query} onChange={(event) => updateQuery(event.target.value)} />
           </div>
-          <Select value={categoryFilter} onChange={(event) => updateCategoryFilter(event.target.value)}>
-            <option value="all">全部分类</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
+          <MultiFilter
+            emptyLabel="全部分类"
+            label="分类"
+            open={openFilter === "category"}
+            options={categories.map((category) => ({ label: category.name, value: category.id }))}
+            value={categoryFilter}
+            onChange={updateCategoryFilter}
+            onOpenChange={(open) => setOpenFilter(open ? "category" : null)}
+          />
+          <MultiFilter
+            emptyLabel="全部标签"
+            label="标签"
+            open={openFilter === "tag"}
+            options={tags.map((tag) => ({ label: tag.name, value: tag.id }))}
+            value={tagFilter}
+            onChange={updateTagFilter}
+            onOpenChange={(open) => setOpenFilter(open ? "tag" : null)}
+          />
+          <Select value={statusFilter} onChange={(event) => updateStatusFilter(event.target.value)}>
+            <option value="all">全部状态</option>
+            <option value="active">启用</option>
+            <option value="inactive">停用</option>
+          </Select>
+          <Select value={featuredFilter} onChange={(event) => updateFeaturedFilter(event.target.value)}>
+            <option value="all">全部推荐</option>
+            <option value="featured">热门推荐</option>
+            <option value="normal">非热门</option>
           </Select>
           <Button type="button" className="shrink-0" onClick={openCreate}>
             <Plus className="size-4" />
             新增链接
           </Button>
+          <Button type="button" variant="danger" className="shrink-0" disabled={submitting || selectedCount === 0} onClick={removeSelected}>
+            <Trash2 className="size-4" />
+            批量删除{selectedCount > 0 ? `(${selectedCount})` : ""}
+          </Button>
         </div>
+        {message ? <p className="border-b border-line bg-red-50 px-5 py-3 text-sm text-red-700">{message}</p> : null}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[1200px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <th className="w-12 px-5 py-3">
+                  <input
+                    aria-label="选择当前页链接"
+                    checked={currentPageSelected}
+                    ref={(node) => {
+                      if (node) node.indeterminate = currentPagePartiallySelected;
+                    }}
+                    type="checkbox"
+                    onChange={(event) => toggleCurrentPage(event.target.checked)}
+                  />
+                </th>
                 <th className="px-5 py-3">网站</th>
+                <th className="px-5 py-3">说明</th>
                 <th className="px-5 py-3">分类</th>
                 <th className="px-5 py-3">标签</th>
                 <th className="px-5 py-3">状态</th>
@@ -237,6 +366,14 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
               {pagedLinks.map((link) => (
                 <tr key={link.id}>
                   <td className="px-5 py-4">
+                    <input
+                      aria-label={`选择链接 ${link.title}`}
+                      checked={selectedIds.includes(link.id)}
+                      type="checkbox"
+                      onChange={(event) => toggleLink(link.id, event.target.checked)}
+                    />
+                  </td>
+                  <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <LinkIcon title={link.title} iconUrl={link.iconUrl} />
                       <div className="min-w-0">
@@ -244,6 +381,9 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
                         <div className="mt-1 max-w-md truncate text-xs text-slate-500">{link.url}</div>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="max-w-xs line-clamp-2 text-sm leading-5 text-slate-600">{link.description || "未填写说明"}</p>
                   </td>
                   <td className="px-5 py-4">{link.category ? <Badge>{link.category.name}</Badge> : null}</td>
                   <td className="px-5 py-4">
@@ -266,6 +406,9 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
                   <td className="px-5 py-4 text-slate-500">{link.sortOrder}</td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
+                      <Button size="sm" variant={link.isActive ? "secondary" : "primary"} disabled={submitting} onClick={() => toggleLinkStatus(link)}>
+                        {link.isActive ? "停用" : "启用"}
+                      </Button>
                       <Button size="sm" variant="secondary" disabled={submitting} onClick={() => edit(link)}>
                         编辑
                       </Button>
@@ -278,7 +421,7 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
               ))}
               {pagedLinks.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="px-5 py-12 text-center text-sm text-slate-500">
                     暂无符合条件的链接
                   </td>
                 </tr>
@@ -440,6 +583,101 @@ function LinkFormPanel({
         </div>
       </div>
     </form>
+  );
+}
+
+function MultiFilter({
+  emptyLabel,
+  label,
+  onChange,
+  onOpenChange,
+  open,
+  options,
+  value,
+}: {
+  emptyLabel: string;
+  label: string;
+  onChange: (value: string[]) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  options: Array<{ label: string; value: string }>;
+  value: string[];
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const selectedOptions = options.filter((option) => value.includes(option.value));
+  const summary =
+    selectedOptions.length === 0
+      ? emptyLabel
+      : selectedOptions.length === 1
+        ? selectedOptions[0].label
+        : `${selectedOptions[0].label} +${selectedOptions.length - 1}`;
+
+  function toggle(optionValue: string, checked: boolean) {
+    if (checked) {
+      onChange(Array.from(new Set([...value, optionValue])));
+      return;
+    }
+    onChange(value.filter((item) => item !== optionValue));
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && containerRef.current?.contains(target)) return;
+      onOpenChange(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onOpenChange(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onOpenChange, open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 text-left text-sm text-slate-900 outline-none transition hover:bg-slate-50 focus:border-blue-400 focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)]"
+        type="button"
+        onClick={() => onOpenChange(!open)}
+      >
+        <span className="truncate">{summary}</span>
+        <ChevronDown className="size-4 shrink-0 text-slate-400" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-11 z-30 w-full min-w-56 rounded-lg border border-line bg-white p-2 shadow-xl shadow-slate-950/10" role="group" aria-label={label}>
+          <div className="mb-1 flex items-center justify-between px-2 py-1 text-xs text-slate-500">
+            <span>{label}</span>
+            {value.length > 0 ? (
+              <button className="text-primary hover:text-blue-700" type="button" onClick={() => onChange([])}>
+                清空
+              </button>
+            ) : null}
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {options.map((option) => {
+              const checked = value.includes(option.value);
+              return (
+                <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <input checked={checked} type="checkbox" onChange={(event) => toggle(option.value, event.target.checked)} />
+                  <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                  {checked ? <Check className="size-4 text-primary" /> : null}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
