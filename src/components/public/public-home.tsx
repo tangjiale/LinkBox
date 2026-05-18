@@ -309,6 +309,8 @@ function sectionTitle(filter: FilterMode) {
 }
 
 function LinkCard({ item, darkMode }: { item: LinkItem; darkMode: boolean }) {
+  const description = item.description?.trim() || "暂无说明";
+
   return (
     <a
       href={item.url}
@@ -327,7 +329,19 @@ function LinkCard({ item, darkMode }: { item: LinkItem; darkMode: boolean }) {
             <h3 className={cn("truncate text-sm font-semibold text-slate-950", darkMode && "text-slate-100")}>{item.title}</h3>
             <Star className={cn("size-4 shrink-0 text-slate-300", item.isFeatured && "fill-amber-400 text-amber-400")} />
           </div>
-          <p className={cn("mt-1 line-clamp-1 text-xs text-slate-400", darkMode && "text-slate-500")}>{item.description}</p>
+          <div className="group/description relative mt-1">
+            <p className={cn("line-clamp-2 break-words text-xs leading-4 text-slate-400", darkMode && "text-slate-500")} title={description}>
+              {description}
+            </p>
+            <span
+              className={cn(
+                "pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-max max-w-[calc(100vw-4rem)] break-words rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600 shadow-lg group-hover/description:block group-focus:block md:max-w-sm",
+                darkMode && "border-slate-700 bg-slate-900 text-slate-200 shadow-none",
+              )}
+            >
+              {description}
+            </span>
+          </div>
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-1.5">
