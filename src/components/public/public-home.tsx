@@ -84,7 +84,7 @@ export function PublicHome({ data }: { data: PublicData }) {
     <div className={cn("min-h-screen bg-[#f7f9fc] text-slate-950", darkMode && "bg-slate-950 text-slate-100")}>
       <header className={cn("sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur", darkMode && "border-slate-800 bg-slate-950/95")}>
         <div className="mx-auto flex h-[60px] max-w-[1440px] items-center justify-between px-5">
-          <SiteMark compact />
+          <SiteMark compact showVersion={false} />
           <nav className={cn("hidden h-full items-center gap-8 text-sm font-medium text-slate-600 md:flex", darkMode && "text-slate-300")}>
             <TopNav active={filter === "all" && !query} darkMode={darkMode} onClick={resetFilters}>
               首页

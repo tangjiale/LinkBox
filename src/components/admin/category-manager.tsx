@@ -80,6 +80,34 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
     }
   }
 
+  async function toggleCategoryStatus(category: Category) {
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/categories/${category.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: category.name,
+          description: category.description ?? "",
+          sortOrder: category.sortOrder,
+          isActive: !category.isActive,
+        }),
+      });
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        setMessage(data.error || "状态更新失败");
+        return;
+      }
+      window.location.reload();
+    } catch (error) {
+      setMessage(getFetchErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
       <section>
@@ -150,6 +178,9 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
+                      <Button size="sm" variant={category.isActive ? "secondary" : "primary"} disabled={submitting} onClick={() => toggleCategoryStatus(category)}>
+                        {category.isActive ? "停用" : "启用"}
+                      </Button>
                       <Button size="sm" variant="secondary" disabled={submitting} onClick={() => edit(category)}>
                         编辑
                       </Button>

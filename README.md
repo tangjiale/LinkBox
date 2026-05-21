@@ -32,6 +32,31 @@
   - API 对非法 JSON、不存在资源、无效标签等返回稳定错误
 
 
+## 系统截图
+
+截图文件统一放在 `docs/screenshots/` 目录中，便于在 GitHub README 和项目文档中复用。
+
+### 公开展示页
+
+<img src="docs/screenshots/public-home.png" alt="公开展示页" width="760">
+
+### 管理员登录页
+
+<img src="docs/screenshots/login.png" alt="管理员登录页" width="760">
+
+### 后台概览
+
+<img src="docs/screenshots/admin-overview.png" alt="后台概览" width="760">
+
+### 链接管理
+
+<img src="docs/screenshots/admin-links.png" alt="链接管理" width="760">
+
+### 分类管理
+
+<img src="docs/screenshots/admin-categories.png" alt="分类管理" width="760">
+
+
 ## 技术栈
 
 - **框架**：Next.js 16 App Router

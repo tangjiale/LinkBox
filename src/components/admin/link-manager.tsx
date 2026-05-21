@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, FolderTree, Plus, Search, Sparkles, Star, Tags, Trash2, X } from "lucide-react";
+import { ArrowDownAZ, ArrowUpAZ, Check, ChevronDown, ChevronLeft, ChevronRight, FolderTree, Plus, Search, Sparkles, Star, Tags, Trash2, X } from "lucide-react";
 import type { Category, LinkItem, Tag } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ type LinkForm = {
   isActive: boolean;
   sortOrder: number;
 };
+
+type SortDirection = "asc" | "desc";
 
 function toLinkForm(link: LinkItem): LinkForm {
   return {
@@ -68,10 +70,11 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [resolvingIcon, setResolvingIcon] = useState(false);
+  const [titleSort, setTitleSort] = useState<SortDirection | null>(null);
 
   const filteredLinks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    return links.filter((item) => {
+    const result = links.filter((item) => {
       const matchesKeyword =
         !keyword ||
         [item.title, item.url, item.description, item.category?.name, ...item.tags.map((tag) => tag.name)]
@@ -85,7 +88,19 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
       const matchesFeatured = featuredFilter === "all" || (featuredFilter === "featured" ? item.isFeatured : !item.isFeatured);
       return matchesKeyword && matchesCategory && matchesTag && matchesStatus && matchesFeatured;
     });
-  }, [categoryFilter, featuredFilter, links, query, statusFilter, tagFilter]);
+
+    return result.sort((left, right) => {
+      if (titleSort) {
+        const titleCompare = left.title.localeCompare(right.title, "zh-CN", { numeric: true, sensitivity: "base" });
+        if (titleCompare !== 0) return titleSort === "asc" ? titleCompare : -titleCompare;
+      }
+
+      const createdCompare = right.createdAt.localeCompare(left.createdAt);
+      if (createdCompare !== 0) return createdCompare;
+
+      return left.title.localeCompare(right.title, "zh-CN", { numeric: true, sensitivity: "base" });
+    });
+  }, [categoryFilter, featuredFilter, links, query, statusFilter, tagFilter, titleSort]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLinks.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -123,6 +138,12 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
 
   function updateFeaturedFilter(value: string) {
     setFeaturedFilter(value);
+    setPage(1);
+    setSelectedIds([]);
+  }
+
+  function toggleTitleSort() {
+    setTitleSort((current) => (current === "asc" ? "desc" : "asc"));
     setPage(1);
     setSelectedIds([]);
   }
@@ -353,7 +374,23 @@ export function LinkManager({ links, categories, tags }: { links: LinkItem[]; ca
                     onChange={(event) => toggleCurrentPage(event.target.checked)}
                   />
                 </th>
-                <th className="px-5 py-3">网站</th>
+                <th className="px-5 py-3" aria-sort={titleSort === "asc" ? "ascending" : titleSort === "desc" ? "descending" : "none"}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-md text-left font-medium transition hover:text-primary focus-visible:focus-ring"
+                    title="按网站名称排序"
+                    onClick={toggleTitleSort}
+                  >
+                    网站
+                    {titleSort === "desc" ? (
+                      <ArrowDownAZ className="size-3.5" />
+                    ) : titleSort === "asc" ? (
+                      <ArrowUpAZ className="size-3.5" />
+                    ) : (
+                      <ChevronDown className="size-3.5 text-slate-300" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-5 py-3">说明</th>
                 <th className="px-5 py-3">分类</th>
                 <th className="px-5 py-3">标签</th>
